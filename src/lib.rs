@@ -10,15 +10,45 @@
 
 extern crate bitcoin;
 
+use std::fmt;
+
 use bitcoin::secp256k1::{self, Secp256k1, SecretKey};
 use bitcoin::util::bip32::ExtendedPrivKey;
 use bitcoin::util::bip32::DerivationPath;
 use bitcoin::util::bip32::ChildNumber;
-use bitcoin::util::bip32::Error;
 use bitcoin::util::key::PrivateKey;
 use bitcoin::hashes::{hmac, sha512, Hash, HashEngine};
 
+/// A BIP85 error.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Error {
+    /// Hardened index is provided, but only non-hardened indexes are allowed
+    InvalidIndex(u32),
+    /// Wrong number of bytes requested
+    InvalidLength(u8),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::InvalidIndex(index) => write!(f,
+                "invalid index for derivation, should be less than 0x80000000: {}", index,
+            ),
+            Error::InvalidLength(len) => write!(f,
+                "invalid bytes length: {}. Should be between 16 and 64", len,
+            ),
+        }
+    }
+}
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+
 /// Derive raw bytes from the root key using provided derivation path.
+///
 /// Use this function only for custom applications,
 /// for standardized applications use application-specific functions - derive_priv,
 /// derive_mnemonic, derive_hex.
@@ -29,11 +59,11 @@ use bitcoin::hashes::{hmac, sha512, Hash, HashEngine};
 pub fn derive<C: secp256k1::Signing, P: AsRef<[ChildNumber]>>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
-        path: &P
+        path: &P,
     ) -> Result<Vec<u8>, Error> {
     const BIP85_CHILD_NUMBER: ChildNumber = ChildNumber::Hardened{ index: 83696968 };
-    let bip85_root = root.ckd_priv(secp, BIP85_CHILD_NUMBER)?;
-    let derived = bip85_root.derive_priv(secp, &path)?;
+    let bip85_root = root.ckd_priv(secp, BIP85_CHILD_NUMBER).unwrap();
+    let derived = bip85_root.derive_priv(secp, &path).unwrap();
     let mut h = hmac::HmacEngine::<sha512::Hash>::new("bip-entropy-from-k".as_bytes());
     h.input(&derived.private_key.to_bytes());
     let data = hmac::Hmac::from_engine(h).into_inner();
@@ -47,16 +77,40 @@ pub fn derive<C: secp256k1::Signing, P: AsRef<[ChildNumber]>>(
 pub fn derive_priv<C: secp256k1::Signing>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
-        index: u32
+        index: u32,
     ) -> Result<PrivateKey, Error> {
     const BIP85_WIF_INDEX: ChildNumber = ChildNumber::Hardened{ index: 2 };
+    if index >= 0x80000000 {
+        return Err(Error::InvalidIndex(index));
+    }
     let path = DerivationPath::from(vec![BIP85_WIF_INDEX, ChildNumber::from_hardened_idx(index).unwrap()]);
     let data = derive(secp, root, &path)?;
     Ok(PrivateKey {
             compressed: true,
             network: root.network,
-            key: SecretKey::from_slice(&data[0..32])?,
+            key: SecretKey::from_slice(&data[0..32]).unwrap(),
     })
+}
+
+/// Derive binary entropy of certain length from the root key
+///
+/// The length can be from 16 to 64.
+pub fn derive_hex<C: secp256k1::Signing>(
+        secp: &Secp256k1<C>,
+        root: &ExtendedPrivKey,
+        length: u8,
+        index: u32,
+    ) -> Result<Vec<u8>, Error> {
+    const BIP85_HEX_INDEX: ChildNumber = ChildNumber::Hardened{ index: 128169 };
+    if length < 16 || length > 64 {
+        return Err(Error::InvalidLength(length));
+    }
+    let path = DerivationPath::from(vec![BIP85_HEX_INDEX,
+                                         ChildNumber::from_hardened_idx(length as u32).unwrap(),
+                                         ChildNumber::from_hardened_idx(index).unwrap()
+    ]);
+    let data = derive(secp, root, &path)?;
+    Ok(data[0..length as usize].to_vec())
 }
 
 // pub fn derive_mnemonic<C: secp256k1::Signing>(
@@ -115,5 +169,36 @@ mod tests {
         let expected = PrivateKey::from_str("Kzyv4uF39d4Jrw2W7UryTHwZr1zQVNk4dAFyqE6BuMrMh1Za7uhp").unwrap();
 
         assert_eq!(expected, derived);
+
+        let index = 0x80000000+1;
+        let derived = derive_priv(&secp, &root, index);
+        assert_eq!(derived, Err(Error::InvalidIndex(index)));
+    }
+
+    #[test]
+    fn test_hex() {
+        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let secp = Secp256k1::new();
+        let derived = derive_hex(&secp, &root, 64, 0).unwrap();
+        let expected = vec![0x49, 0x2d, 0xb4, 0x69, 0x8c, 0xf3, 0xb7, 0x3a,
+                            0x5a, 0x24, 0x99, 0x8a, 0xa3, 0xe9, 0xd7, 0xfa,
+                            0x96, 0x27, 0x5d, 0x85, 0x72, 0x4a, 0x91, 0xe7,
+                            0x1a, 0xa2, 0xd6, 0x45, 0x44, 0x2f, 0x87, 0x85,
+                            0x55, 0xd0, 0x78, 0xfd, 0x1f, 0x1f, 0x67, 0xe3,
+                            0x68, 0x97, 0x6f, 0x04, 0x13, 0x7b, 0x1f, 0x7a,
+                            0x0d, 0x19, 0x23, 0x21, 0x36, 0xca, 0x50, 0xc4,
+                            0x46, 0x14, 0xaf, 0x72, 0xb5, 0x58, 0x2a, 0x5c,
+        ];
+
+        assert_eq!(expected, derived);
+
+        let derived = derive_hex(&secp, &root, 35, 0).unwrap();
+        assert_eq!(derived.len(), 35);
+
+        let derived = derive_hex(&secp, &root, 15, 0);
+        assert_eq!(derived, Err(Error::InvalidLength(15)));
+
+        let derived = derive_hex(&secp, &root, 65, 0);
+        assert_eq!(derived, Err(Error::InvalidLength(65)));
     }
 }
