@@ -14,4 +14,7 @@ fn main(){
 
     let data = bip85::derive_hex(&secp, &root, 35, 0).unwrap();
     println!("35 bytes of hex entropy:\n{:x?}", data);
+
+    let xprv = bip85::derive_xprv(&secp, &root, 0).unwrap();
+    println!("Derived extended private key:\n{}", xprv);
 }

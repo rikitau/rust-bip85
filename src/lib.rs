@@ -27,8 +27,10 @@ extern crate bitcoin;
 extern crate bip39;
 
 use std::fmt;
+use std::default::Default;
 
 use bitcoin::secp256k1::{self, Secp256k1, SecretKey};
+use bitcoin::util::bip32;
 use bitcoin::util::bip32::ExtendedPrivKey;
 use bitcoin::util::bip32::DerivationPath;
 use bitcoin::util::bip32::ChildNumber;
@@ -45,6 +47,8 @@ pub enum Error {
     InvalidIndex(u32),
     /// Wrong number of bytes requested
     InvalidLength(u32),
+    /// Wrong number of words for mnemonic
+    InvalidWordCount(u32),
 }
 
 impl fmt::Display for Error {
@@ -55,6 +59,9 @@ impl fmt::Display for Error {
             ),
             Error::InvalidLength(len) => write!(f,
                 "invalid bytes length: {}. Should be between 16 and 64", len,
+            ),
+            Error::InvalidWordCount(word_count) => write!(f,
+                "invalid number of words for mnemonic: {}. Should be 12, 18 or 24", word_count,
             ),
         }
     }
@@ -111,6 +118,34 @@ pub fn derive_priv<C: secp256k1::Signing>(
     })
 }
 
+/// Derive bip32 extended private key from root xprv
+pub fn derive_xprv<C: secp256k1::Signing>(
+        secp: &Secp256k1<C>,
+        root: &ExtendedPrivKey,
+        index: u32,
+    ) -> Result<ExtendedPrivKey, Error> {
+    const BIP85_BIP32_INDEX: ChildNumber = ChildNumber::Hardened{ index: 32 };
+    if index >= 0x80000000 {
+        return Err(Error::InvalidIndex(index));
+    }
+    let path = DerivationPath::from(vec![BIP85_BIP32_INDEX, ChildNumber::from_hardened_idx(index).unwrap()]);
+    let data = derive(secp, root, &path)?;
+    Ok(ExtendedPrivKey {
+            network: root.network,
+            depth: 0,
+            parent_fingerprint: Default::default(),
+            child_number: ChildNumber::Normal{index: 0},
+            private_key: PrivateKey {
+                compressed: true,
+                network: root.network,
+                key: SecretKey::from_slice(
+                    &data[32..]
+                ).unwrap(),
+        },
+        chain_code: bip32::ChainCode::from(&data[..32]),
+    })
+}
+
 /// Derive binary entropy of certain length from the root key
 ///
 /// The length can be from 16 to 64.
@@ -123,6 +158,9 @@ pub fn derive_hex<C: secp256k1::Signing>(
     const BIP85_HEX_INDEX: ChildNumber = ChildNumber::Hardened{ index: 128169 };
     if length < 16 || length > 64 {
         return Err(Error::InvalidLength(length));
+    }
+    if index >= 0x80000000 {
+        return Err(Error::InvalidIndex(index));
     }
     let path = DerivationPath::from(vec![BIP85_HEX_INDEX,
                                          ChildNumber::from_hardened_idx(length).unwrap(),
@@ -141,7 +179,10 @@ pub fn derive_mnemonic<C: secp256k1::Signing>(
        index: u32,
    ) -> Result<Mnemonic, Error>{
     if word_count < 12 || word_count > 24 || word_count % 6 != 0 {
-        return Err(Error::InvalidLength(word_count));
+        return Err(Error::InvalidWordCount(word_count));
+    }
+    if index >= 0x80000000 {
+        return Err(Error::InvalidIndex(index));
     }
     const BIP85_BIP39_INDEX: ChildNumber = ChildNumber::Hardened{ index: 39 };
     let path = DerivationPath::from(vec![BIP85_BIP39_INDEX,
@@ -209,6 +250,17 @@ mod tests {
         let index = 0x80000000+1;
         let derived = derive_priv(&secp, &root, index);
         assert_eq!(derived, Err(Error::InvalidIndex(index)));
+    }
+
+    #[test]
+    fn test_xprv() {
+        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let secp = Secp256k1::new();
+
+        let derived = derive_xprv(&secp, &root, 0).unwrap();
+        let expected = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UGXMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX").unwrap();
+
+        assert_eq!(expected, derived);
     }
 
     #[test]
