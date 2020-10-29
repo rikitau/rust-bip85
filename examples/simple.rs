@@ -9,9 +9,9 @@ fn main(){
     let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
     let secp = Secp256k1::new();
 
-    let mnemonic = bip85::derive_mnemonic(&secp, &root, 12, 0).unwrap();
-    println!("12-word mnemonic:\n{}", mnemonic);
+    let derived = bip85::derive_priv(&secp, &root, 0).unwrap();
+    println!("WIF key:\n{}", derived);
 
-    let mnemonic = bip85::derive_mnemonic(&secp, &root, 24, 0).unwrap();
-    println!("24-word mnemonic:\n{}", mnemonic);
+    let data = bip85::derive_hex(&secp, &root, 35, 0).unwrap();
+    println!("35 bytes of hex entropy:\n{:x?}", data);
 }

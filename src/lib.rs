@@ -23,6 +23,8 @@
 #![deny(missing_docs)]
 
 extern crate bitcoin;
+#[cfg(feature = "mnemonic")]
+extern crate bip39;
 
 use std::fmt;
 
@@ -33,13 +35,16 @@ use bitcoin::util::bip32::ChildNumber;
 use bitcoin::util::key::PrivateKey;
 use bitcoin::hashes::{hmac, sha512, Hash, HashEngine};
 
+#[cfg(feature = "mnemonic")]
+use bip39::Mnemonic;
+
 /// A BIP85 error.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Error {
     /// Hardened index is provided, but only non-hardened indexes are allowed
     InvalidIndex(u32),
     /// Wrong number of bytes requested
-    InvalidLength(u8),
+    InvalidLength(u32),
 }
 
 impl fmt::Display for Error {
@@ -112,7 +117,7 @@ pub fn derive_priv<C: secp256k1::Signing>(
 pub fn derive_hex<C: secp256k1::Signing>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
-        length: u8,
+        length: u32,
         index: u32,
     ) -> Result<Vec<u8>, Error> {
     const BIP85_HEX_INDEX: ChildNumber = ChildNumber::Hardened{ index: 128169 };
@@ -120,18 +125,35 @@ pub fn derive_hex<C: secp256k1::Signing>(
         return Err(Error::InvalidLength(length));
     }
     let path = DerivationPath::from(vec![BIP85_HEX_INDEX,
-                                         ChildNumber::from_hardened_idx(length as u32).unwrap(),
+                                         ChildNumber::from_hardened_idx(length).unwrap(),
                                          ChildNumber::from_hardened_idx(index).unwrap()
     ]);
     let data = derive(secp, root, &path)?;
     Ok(data[0..length as usize].to_vec())
 }
 
-// pub fn derive_mnemonic<C: secp256k1::Signing>(
-//        secp: &Secp256k1<C>,
-//        root: &ExtendedPrivKey,
-//        index: u32
-//    ) -> Result<Priva
+/// Derive mnemonic from the xprv key
+#[cfg(feature = "mnemonic")]
+pub fn derive_mnemonic<C: secp256k1::Signing>(
+       secp: &Secp256k1<C>,
+       root: &ExtendedPrivKey,
+       word_count: u32,
+       index: u32,
+   ) -> Result<Mnemonic, Error>{
+    if word_count < 12 || word_count > 24 || word_count % 6 != 0 {
+        return Err(Error::InvalidLength(word_count));
+    }
+    const BIP85_BIP39_INDEX: ChildNumber = ChildNumber::Hardened{ index: 39 };
+    let path = DerivationPath::from(vec![BIP85_BIP39_INDEX,
+                                         ChildNumber::Hardened { index: 0 }, // English
+                                         ChildNumber::from_hardened_idx(word_count).unwrap(),
+                                         ChildNumber::from_hardened_idx(index).unwrap()
+    ]);
+    let data = derive(secp, root, &path)?;
+    let len = word_count * 4 / 3;
+    let mnemonic = Mnemonic::from_entropy(&data[0..len as usize]).unwrap();
+    Ok(mnemonic)
+}
 
 #[cfg(test)]
 mod tests {
@@ -214,5 +236,24 @@ mod tests {
 
         let derived = derive_hex(&secp, &root, 65, 0);
         assert_eq!(derived, Err(Error::InvalidLength(65)));
+    }
+
+    #[cfg(feature = "mnemonic")]
+    #[test]
+    fn test_mnemonic() {
+        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let secp = Secp256k1::new();
+
+        let derived = derive_mnemonic(&secp, &root, 12, 0).unwrap();
+        let expected = Mnemonic::from_str("girl mad pet galaxy egg matter matrix prison refuse sense ordinary nose").unwrap();
+        assert_eq!(derived, expected);
+
+        let derived = derive_mnemonic(&secp, &root, 18, 0).unwrap();
+        let expected = Mnemonic::from_str("near account window bike charge season chef number sketch tomorrow excuse sniff circle vital hockey outdoor supply token").unwrap();
+        assert_eq!(derived, expected);
+
+        let derived = derive_mnemonic(&secp, &root, 24, 0).unwrap();
+        let expected = Mnemonic::from_str("puppy ocean match cereal symbol another shed magic wrap hammer bulb intact gadget divorce twin tonight reason outdoor destroy simple truth cigar social volcano").unwrap();
+        assert_eq!(derived, expected);
     }
 }

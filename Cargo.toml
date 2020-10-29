@@ -4,9 +4,14 @@ version = "0.1.0"
 authors = ["Rita Kitic <rikitau@protonmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+mnemonic = ["bip39"]
 
 [dependencies]
 bitcoin = "0.25.0"
-bip39 = "1.0.0-rc1"
+bip39 = { version = "1.0.0-rc1", optional = true }
+
+[[example]]
+name = "mnemonic"
+required-features = ["mnemonic"]
 
