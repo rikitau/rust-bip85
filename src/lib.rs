@@ -13,6 +13,22 @@
 
 
 //! # BIP-85 deterministic entropy generation
+//!
+//! Derives entropy from the extended private key according to
+//! [BIP-85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki).
+//!
+//! # Examples
+//!
+//! There are a few [examples](https://github.com/rikitau/rust-bip85/tree/master/examples)
+//! in the repository.
+//!
+//! # Optional features
+//!
+//! By default the library can derive entropy in any format specified by the standard except
+//! mnemonics. To use mnemonics enable feature "mnemonic".
+//!
+//! All bip-39 languages except english are also optional, so if you plan generating mnemonics in
+//! japanese enable feature "japanese", and so on.
 
 #![deny(non_upper_case_globals)]
 #![deny(non_camel_case_types)]
@@ -78,12 +94,12 @@ impl fmt::Debug for Error {
 /// Derive raw bytes from the root key using provided derivation path.
 ///
 /// Use this function only for custom applications,
-/// for standardized applications use application-specific functions - derive_priv,
-/// derive_mnemonic, derive_hex.
+/// for standardized applications use application-specific functions - `to_wif`,
+/// `to_hex`, `to_xprv` and `to_mnemonic[_in]`.
 ///
-/// Derivation path should start after initial bip85 index (83696968')
-/// So to get entropy for WIF private key (app_no 2) with index 1
-/// use DerivationPath::from_str("m/2'/0').
+/// Derivation path should start *after* initial bip85 index (`83696968'`)
+/// For example, to get entropy for WIF private key (app_no `2`) with index `1`
+/// use `DerivationPath::from_str("m/2'/0'")`.
 pub fn derive<C: secp256k1::Signing, P: AsRef<[ChildNumber]>>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
@@ -101,8 +117,11 @@ pub fn derive<C: secp256k1::Signing, P: AsRef<[ChildNumber]>>(
 
 /// Derive Bitcoin Private Key from the root key
 ///
-/// See https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#hd-seed-wif
-pub fn derive_priv<C: secp256k1::Signing>(
+/// See [specs](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#hd-seed-wif)
+/// for more info.
+///
+/// `index` can be any number lower than `0x80000000`
+pub fn to_wif<C: secp256k1::Signing>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
         index: u32,
@@ -111,7 +130,8 @@ pub fn derive_priv<C: secp256k1::Signing>(
     if index >= 0x80000000 {
         return Err(Error::InvalidIndex(index));
     }
-    let path = DerivationPath::from(vec![BIP85_WIF_INDEX, ChildNumber::from_hardened_idx(index).unwrap()]);
+    let path = DerivationPath::from(vec![BIP85_WIF_INDEX,
+                                         ChildNumber::from_hardened_idx(index).unwrap()]);
     let data = derive(secp, root, &path)?;
     Ok(PrivateKey {
             compressed: true,
@@ -121,7 +141,11 @@ pub fn derive_priv<C: secp256k1::Signing>(
 }
 
 /// Derive bip32 extended private key from root xprv
-pub fn derive_xprv<C: secp256k1::Signing>(
+///
+/// See [specs](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#xprv) for more info.
+///
+/// `index` can be any number lower than `0x80000000`
+pub fn to_xprv<C: secp256k1::Signing>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
         index: u32,
@@ -130,7 +154,8 @@ pub fn derive_xprv<C: secp256k1::Signing>(
     if index >= 0x80000000 {
         return Err(Error::InvalidIndex(index));
     }
-    let path = DerivationPath::from(vec![BIP85_BIP32_INDEX, ChildNumber::from_hardened_idx(index).unwrap()]);
+    let path = DerivationPath::from(vec![BIP85_BIP32_INDEX,
+                                         ChildNumber::from_hardened_idx(index).unwrap()]);
     let data = derive(secp, root, &path)?;
     Ok(ExtendedPrivKey {
             network: root.network,
@@ -150,8 +175,10 @@ pub fn derive_xprv<C: secp256k1::Signing>(
 
 /// Derive binary entropy of certain length from the root key
 ///
-/// The length can be from 16 to 64.
-pub fn derive_hex<C: secp256k1::Signing>(
+/// The `length` can be from 16 to 64 and defines number of bytes derived.
+///
+/// See [specs](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#hex) for more info.
+pub fn to_hex<C: secp256k1::Signing>(
         secp: &Secp256k1<C>,
         root: &ExtendedPrivKey,
         length: u32,
@@ -174,7 +201,12 @@ pub fn derive_hex<C: secp256k1::Signing>(
 
 #[cfg(feature = "mnemonic")]
 /// Derive mnemonic in given language
-pub fn derive_mnemonic_in<C: secp256k1::Signing>(
+///
+/// See [specs](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#bip39)
+/// for more info.
+///
+/// `word_count` can be 12, 18 or 24, `index` - anything lower than `0x80000000`
+pub fn to_mnemonic_in<C: secp256k1::Signing>(
        secp: &Secp256k1<C>,
        root: &ExtendedPrivKey,
        lang: Language,
@@ -218,14 +250,18 @@ pub fn derive_mnemonic_in<C: secp256k1::Signing>(
     Ok(mnemonic)
 }
 /// Derive mnemonic from the xprv key
+///
+/// Same as `to_mnemonic_in` using English language as default.
+///
+/// `word_count` can be 12, 18 or 24, `index` - anything lower than `0x80000000`
 #[cfg(feature = "mnemonic")]
-pub fn derive_mnemonic<C: secp256k1::Signing>(
+pub fn to_mnemonic<C: secp256k1::Signing>(
        secp: &Secp256k1<C>,
        root: &ExtendedPrivKey,
        word_count: u32,
        index: u32,
    ) -> Result<Mnemonic, Error>{
-    derive_mnemonic_in(secp, root, Language::English, word_count, index)
+    to_mnemonic_in(secp, root, Language::English, word_count, index)
 }
 
 #[cfg(test)]
@@ -240,7 +276,10 @@ mod tests {
     // test vectors from https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki
     #[test]
     fn test_raw() {
-        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let root = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaL\
+             LHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+        ).unwrap();
         let secp = Secp256k1::new();
 
         let path = DerivationPath::from_str("m/0'/0'").unwrap();
@@ -272,34 +311,48 @@ mod tests {
 
     #[test]
     fn test_priv() {
-        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let root = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaL\
+             LHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+        ).unwrap();
         let secp = Secp256k1::new();
-        let derived = derive_priv(&secp, &root, 0).unwrap();
-        let expected = PrivateKey::from_str("Kzyv4uF39d4Jrw2W7UryTHwZr1zQVNk4dAFyqE6BuMrMh1Za7uhp").unwrap();
+        let derived = to_wif(&secp, &root, 0).unwrap();
+        let expected = PrivateKey::from_str(
+            "Kzyv4uF39d4Jrw2W7UryTHwZr1zQVNk4dAFyqE6BuMrMh1Za7uhp"
+        ).unwrap();
 
         assert_eq!(expected, derived);
 
         let index = 0x80000000+1;
-        let derived = derive_priv(&secp, &root, index);
+        let derived = to_wif(&secp, &root, index);
         assert_eq!(derived, Err(Error::InvalidIndex(index)));
     }
 
     #[test]
     fn test_xprv() {
-        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let root = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaL\
+             LHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+        ).unwrap();
         let secp = Secp256k1::new();
 
-        let derived = derive_xprv(&secp, &root, 0).unwrap();
-        let expected = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UGXMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX").unwrap();
+        let derived = to_xprv(&secp, &root, 0).unwrap();
+        let expected = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UG\
+             XMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX"
+        ).unwrap();
 
         assert_eq!(expected, derived);
     }
 
     #[test]
     fn test_hex() {
-        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let root = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaL\
+             LHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+        ).unwrap();
         let secp = Secp256k1::new();
-        let derived = derive_hex(&secp, &root, 64, 0).unwrap();
+        let derived = to_hex(&secp, &root, 64, 0).unwrap();
         let expected = vec![0x49, 0x2d, 0xb4, 0x69, 0x8c, 0xf3, 0xb7, 0x3a,
                             0x5a, 0x24, 0x99, 0x8a, 0xa3, 0xe9, 0xd7, 0xfa,
                             0x96, 0x27, 0x5d, 0x85, 0x72, 0x4a, 0x91, 0xe7,
@@ -312,32 +365,43 @@ mod tests {
 
         assert_eq!(expected, derived);
 
-        let derived = derive_hex(&secp, &root, 35, 0).unwrap();
+        let derived = to_hex(&secp, &root, 35, 0).unwrap();
         assert_eq!(derived.len(), 35);
 
-        let derived = derive_hex(&secp, &root, 15, 0);
+        let derived = to_hex(&secp, &root, 15, 0);
         assert_eq!(derived, Err(Error::InvalidLength(15)));
 
-        let derived = derive_hex(&secp, &root, 65, 0);
+        let derived = to_hex(&secp, &root, 65, 0);
         assert_eq!(derived, Err(Error::InvalidLength(65)));
     }
 
     #[cfg(feature = "mnemonic")]
     #[test]
     fn test_mnemonic() {
-        let root = ExtendedPrivKey::from_str("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb").unwrap();
+        let root = ExtendedPrivKey::from_str(
+            "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaL\
+             LHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+        ).unwrap();
         let secp = Secp256k1::new();
 
-        let derived = derive_mnemonic(&secp, &root, 12, 0).unwrap();
-        let expected = Mnemonic::from_str("girl mad pet galaxy egg matter matrix prison refuse sense ordinary nose").unwrap();
+        let derived = to_mnemonic(&secp, &root, 12, 0).unwrap();
+        let expected = Mnemonic::from_str(
+            "girl mad pet galaxy egg matter matrix prison refuse sense ordinary nose"
+        ).unwrap();
         assert_eq!(derived, expected);
 
-        let derived = derive_mnemonic(&secp, &root, 18, 0).unwrap();
-        let expected = Mnemonic::from_str("near account window bike charge season chef number sketch tomorrow excuse sniff circle vital hockey outdoor supply token").unwrap();
+        let derived = to_mnemonic(&secp, &root, 18, 0).unwrap();
+        let expected = Mnemonic::from_str(
+            "near account window bike charge season chef number sketch tomorrow excuse sniff \
+             circle vital hockey outdoor supply token"
+        ).unwrap();
         assert_eq!(derived, expected);
 
-        let derived = derive_mnemonic(&secp, &root, 24, 0).unwrap();
-        let expected = Mnemonic::from_str("puppy ocean match cereal symbol another shed magic wrap hammer bulb intact gadget divorce twin tonight reason outdoor destroy simple truth cigar social volcano").unwrap();
+        let derived = to_mnemonic(&secp, &root, 24, 0).unwrap();
+        let expected = Mnemonic::from_str(
+            "puppy ocean match cereal symbol another shed magic wrap hammer bulb intact gadget \
+             divorce twin tonight reason outdoor destroy simple truth cigar social volcano"
+        ).unwrap();
         assert_eq!(derived, expected);
     }
 }
