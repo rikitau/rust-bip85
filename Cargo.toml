@@ -6,6 +6,27 @@ edition = "2018"
 
 [features]
 mnemonic = ["bip39"]
+# Note: English is the standard for bip39 so always included
+chinese-simplified = ["mnemonic", "bip39/chinese-simplified"]
+chinese-traditional = ["mnemonic", "bip39/chinese-traditional"]
+czech = ["mnemonic", "bip39/czech"]
+french = ["mnemonic", "bip39/french"]
+italian = ["mnemonic", "bip39/italian"]
+japanese = ["mnemonic", "bip39/japanese"]
+korean = ["mnemonic", "bip39/korean"]
+spanish = ["mnemonic", "bip39/spanish"]
+
+all-languages = [
+    "mnemonic",
+    "chinese-simplified",
+    "chinese-traditional",
+    "czech",
+    "french",
+    "italian",
+    "japanese",
+    "korean",
+    "spanish"
+]
 
 [dependencies]
 bitcoin = "0.25.0"
@@ -13,5 +34,5 @@ bip39 = { version = "1.0.0-rc1", optional = true }
 
 [[example]]
 name = "mnemonic"
-required-features = ["mnemonic"]
+required-features = ["japanese"]
 

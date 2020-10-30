@@ -39,6 +39,8 @@ use bitcoin::hashes::{hmac, sha512, Hash, HashEngine};
 
 #[cfg(feature = "mnemonic")]
 use bip39::Mnemonic;
+#[cfg(feature = "mnemonic")]
+use bip39::Language;
 
 /// A BIP85 error.
 #[derive(Clone, PartialEq, Eq)]
@@ -170,6 +172,51 @@ pub fn derive_hex<C: secp256k1::Signing>(
     Ok(data[0..length as usize].to_vec())
 }
 
+#[cfg(feature = "mnemonic")]
+/// Derive mnemonic in given language
+pub fn derive_mnemonic_in<C: secp256k1::Signing>(
+       secp: &Secp256k1<C>,
+       root: &ExtendedPrivKey,
+       lang: Language,
+       word_count: u32,
+       index: u32,
+    ) -> Result<Mnemonic, Error>{
+    if word_count < 12 || word_count > 24 || word_count % 6 != 0 {
+        return Err(Error::InvalidWordCount(word_count));
+    }
+    if index >= 0x80000000 {
+        return Err(Error::InvalidIndex(index));
+    }
+    const BIP85_BIP39_INDEX: ChildNumber = ChildNumber::Hardened{ index: 39 };
+    let language_index = match lang {
+	    Language::English => 0,
+	    #[cfg(feature = "japanese")]
+	    Language::Japanese => 1,
+	    #[cfg(feature = "korean")]
+	    Language::Korean => 2,
+	    #[cfg(feature = "spanish")]
+	    Language::Spanish => 3,
+	    #[cfg(feature = "chinese-simplified")]
+	    Language::SimplifiedChinese => 4,
+	    #[cfg(feature = "chinese-traditional")]
+	    Language::TraditionalChinese => 5,
+	    #[cfg(feature = "french")]
+	    Language::French => 6,
+	    #[cfg(feature = "italian")]
+	    Language::Italian => 7,
+	    #[cfg(feature = "czech")]
+	    Language::Czech => 8,
+    };
+    let path = DerivationPath::from(vec![BIP85_BIP39_INDEX,
+                                         ChildNumber::Hardened { index: language_index },
+                                         ChildNumber::from_hardened_idx(word_count).unwrap(),
+                                         ChildNumber::from_hardened_idx(index).unwrap()
+    ]);
+    let data = derive(secp, root, &path)?;
+    let len = word_count * 4 / 3;
+    let mnemonic = Mnemonic::from_entropy_in(lang, &data[0..len as usize]).unwrap();
+    Ok(mnemonic)
+}
 /// Derive mnemonic from the xprv key
 #[cfg(feature = "mnemonic")]
 pub fn derive_mnemonic<C: secp256k1::Signing>(
@@ -178,22 +225,7 @@ pub fn derive_mnemonic<C: secp256k1::Signing>(
        word_count: u32,
        index: u32,
    ) -> Result<Mnemonic, Error>{
-    if word_count < 12 || word_count > 24 || word_count % 6 != 0 {
-        return Err(Error::InvalidWordCount(word_count));
-    }
-    if index >= 0x80000000 {
-        return Err(Error::InvalidIndex(index));
-    }
-    const BIP85_BIP39_INDEX: ChildNumber = ChildNumber::Hardened{ index: 39 };
-    let path = DerivationPath::from(vec![BIP85_BIP39_INDEX,
-                                         ChildNumber::Hardened { index: 0 }, // English
-                                         ChildNumber::from_hardened_idx(word_count).unwrap(),
-                                         ChildNumber::from_hardened_idx(index).unwrap()
-    ]);
-    let data = derive(secp, root, &path)?;
-    let len = word_count * 4 / 3;
-    let mnemonic = Mnemonic::from_entropy(&data[0..len as usize]).unwrap();
-    Ok(mnemonic)
+    derive_mnemonic_in(secp, root, Language::English, word_count, index)
 }
 
 #[cfg(test)]
