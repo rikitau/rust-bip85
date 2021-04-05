@@ -5,6 +5,8 @@
 Derives entropy from the extended private key according to
 [BIP-85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki).
 
+Try it [online](https://rikitau.github.io/wasm-bip85/) with WASM magic!
+
 # Examples
 
 There are a few [examples](https://github.com/rikitau/rust-bip85/tree/master/examples)
