@@ -2,6 +2,10 @@
 name = "bip85"
 version = "0.1.0"
 authors = ["Rita Kitic <rikitau@protonmail.com>"]
+description = "BIP-85 - deterministic entropy from bip32 keychains"
+repository = "https://github.com/rikitau/rust-bip85"
+readme = "README.md"
+license = "MIT"
 edition = "2018"
 
 [features]
