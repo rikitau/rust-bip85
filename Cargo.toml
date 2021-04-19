@@ -33,8 +33,8 @@ all-languages = [
 ]
 
 [dependencies]
-bitcoin = "0.25.0"
-bip39 = { version = "1.0.0-rc1", optional = true }
+bitcoin = "0.26.0"
+bip39 = { version = "1.0.1", optional = true }
 
 [[example]]
 name = "mnemonic"
