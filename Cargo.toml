@@ -9,6 +9,7 @@ license = "MIT"
 edition = "2018"
 
 [features]
+default = ["mnemonic"]
 mnemonic = ["bip39"]
 # Note: English is the standard for bip39 so always included
 chinese-simplified = ["mnemonic", "bip39/chinese-simplified"]
