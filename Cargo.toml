@@ -1,6 +1,6 @@
 [package]
 name = "bip85"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Rita Kitic <rikitau@protonmail.com>"]
 description = "BIP-85 - deterministic entropy from bip32 keychains"
 repository = "https://github.com/rikitau/rust-bip85"
